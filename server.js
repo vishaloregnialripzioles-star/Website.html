@@ -8,69 +8,114 @@ const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || '';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const PUBLIC_URL = 'https://website-html-jt0l.onrender.com';
 const REDIRECT_URI = `${PUBLIC_URL}/oauth/callback`;
+const COMMAND_HUB_API_URL = (process.env.COMMAND_HUB_API_URL || 'https://command-hub-2.onrender.com').replace(/\/$/, '');
+const DASHBOARD_API_SECRET = process.env.DASHBOARD_API_SECRET || '';
 const sessions = new Map();
 
-function base() { return PUBLIC_URL; }
-function redirectUri() { return REDIRECT_URI; }
 function sign(v) { return crypto.createHmac('sha256', SESSION_SECRET).update(v).digest('base64url'); }
 function sessionCookie(id) { return `sparxie_session=${encodeURIComponent(`${Buffer.from(id).toString('base64url')}.${sign(id)}`)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=604800`; }
 function getSession(req) {
   const raw = (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('sparxie_session='));
   if (!raw) return null;
-  const token = decodeURIComponent(raw.slice('sparxie_session='.length));
-  const [encoded, sig] = token.split('.');
-  if (!encoded || !sig) return null;
-  const id = Buffer.from(encoded, 'base64url').toString();
-  const expected = sign(id);
-  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-  const s = sessions.get(id);
-  return s && Date.now() - s.createdAt < 7 * 24 * 60 * 60 * 1000 ? s : null;
+  try {
+    const token = decodeURIComponent(raw.slice('sparxie_session='.length));
+    const [encoded, sig] = token.split('.');
+    if (!encoded || !sig) return null;
+    const id = Buffer.from(encoded, 'base64url').toString();
+    const expected = sign(id);
+    if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+    const s = sessions.get(id);
+    return s && Date.now() - s.createdAt < 7 * 24 * 60 * 60 * 1000 ? s : null;
+  } catch { return null; }
 }
 function newSession(data) { const id = crypto.randomUUID(); sessions.set(id, { ...data, createdAt: Date.now() }); return id; }
-async function api(path, token) {
+async function discordApi(path, token) {
   const r = await fetch(`https://discord.com/api/v10${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) throw new Error(`Discord API ${r.status}: ${await r.text()}`);
   return r.json();
 }
-function esc(v='') { return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function page(title, body) { return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>body{margin:0;background:#0b0d12;color:#f5f7ff;font:16px system-ui;text-align:center}main{max-width:900px;margin:auto;padding:60px 20px}.btn{display:inline-block;padding:13px 20px;background:#5865f2;color:white;text-decoration:none;border-radius:12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;margin-top:25px}.card{background:#171a22;border:1px solid #292e3b;border-radius:18px;padding:20px;text-align:left}.muted{color:#9ca3b4}.icon{width:55px;height:55px;border-radius:15px;background:#5865f2;display:grid;place-items:center;margin-bottom:12px;font-size:24px}</style></head><body>${body}</body></html>`; }
+function esc(v = '') { return String(v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
+function page(title, body, script = '') {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
+:root{--bg:#171b24;--panel:#202632;--panel2:#252c38;--line:#303847;--text:#f5f7ff;--muted:#9ba5b5;--brand:#5865f2;--green:#36d56d;--danger:#ed6671}*{box-sizing:border-box}body{margin:0;background:#151922;color:var(--text);font:14px system-ui,-apple-system,Segoe UI,sans-serif}.app{display:flex;min-height:100vh}.side{width:250px;background:#1b212b;border-right:1px solid var(--line);padding:14px;position:sticky;top:0;height:100vh}.brand{font-weight:900;font-size:18px;display:flex;gap:9px;align-items:center;padding:8px 10px 18px}.bolt{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#5865f2,#7c3aed);display:grid;place-items:center}.server{background:#252c38;border-radius:10px;padding:10px;margin-bottom:15px}.server small{display:block;color:var(--muted);margin-top:3px}.nav{display:grid;gap:4px}.nav a{color:#c7cfdb;text-decoration:none;padding:10px 11px;border-radius:8px}.nav a:hover,.nav a.active{background:#2b3340;color:#fff}.group{font-size:10px;color:#778193;text-transform:uppercase;font-weight:900;margin:18px 10px 5px}.main{flex:1;min-width:0}.top{height:66px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:#171c25}.top h1{font-size:20px;margin:0}.content{max-width:1100px;margin:auto;padding:25px}.hero{margin-bottom:22px}.hero h2{font-size:28px;margin:0 0 5px}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}.card h3{margin:0 0 7px;font-size:17px}.card p{color:var(--muted);line-height:1.5}.wide{grid-column:1/-1}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.row:last-child{border-bottom:0}.field{display:grid;gap:7px;margin:13px 0}.field label{font-weight:750}.input,.select,.textarea{width:100%;background:#11161e;color:#fff;border:1px solid #394354;border-radius:9px;padding:11px}.textarea{min-height:110px;resize:vertical}.btn{border:0;border-radius:9px;background:var(--brand);color:#fff;padding:10px 14px;font-weight:800;cursor:pointer}.btn.secondary{background:#303847}.btn.danger{background:#7b2d37}.switch{width:44px;height:24px;border-radius:99px;background:#3a4351;position:relative;cursor:pointer;border:0}.switch:after{content:'';position:absolute;width:18px;height:18px;border-radius:50%;background:white;left:3px;top:3px;transition:.15s}.switch.on{background:var(--green)}.switch.on:after{left:23px}.tag{display:inline-block;padding:4px 8px;border-radius:7px;background:#303847;color:#cbd3df;font-size:11px;margin:3px}.status{margin-top:12px;color:#75e89b;font-weight:800}.notice{background:#2b2a20;border:1px solid #4c4832;padding:12px;border-radius:10px;color:#d8d0a2;margin-bottom:18px}.cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.command{background:#202632;border:1px solid var(--line);border-radius:12px;padding:15px}.command b{display:block;margin-bottom:5px}.toast{position:fixed;right:20px;bottom:20px;background:#252c38;border:1px solid var(--line);padding:12px 16px;border-radius:10px;display:none}.mobile{display:none}@media(max-width:800px){.side{display:none}.mobile{display:block}.grid,.cards3{grid-template-columns:1fr}.content{padding:16px}.top{padding:0 16px}.wide{grid-column:auto}}
+</style></head><body>${body}<div class="toast" id="toast"></div>${script}</body></html>`;
+}
+function dashboardPage(g) {
+  const nav = `<aside class="side"><div class="brand"><span class="bolt">⚡</span>Sparxie</div><div class="server"><b>${esc(g.name)}</b><small>${esc(g.id)}</small></div><nav class="nav"><a class="active" href="#general">⚙️ General Settings</a><a href="#commands">▣ Commands</a><a href="#messages">💬 Messages</a><a href="#branding">✦ Custom Branding</a><div class="group">Modules</div><a href="#automod">🛡️ Auto Moderation</a><a href="#moderation">🛡️ Moderation</a><a href="#giveaway">🎁 Giveaways</a><a href="#ai">✧ AI Moderation</a><a href="#logging">🔗 Logging</a></nav></aside>`;
+  const body = `<div class="app">${nav}<section class="main"><header class="top"><h1>${esc(g.name)} Dashboard</h1><div><a class="btn secondary" href="/servers">Change Server</a> <a class="btn secondary" href="/logout">Logout</a></div></header><main class="content">
+<div class="notice">You are managing <b>${esc(g.name)}</b>. Changes made here are stored for this server only and are sent to the live Command-Hub bot.</div>
+<section id="general" class="hero"><h2>General Settings</h2><div class="muted">Basic settings for this Discord server.</div></section>
+<div class="grid">
+<div class="card"><h3>Prefix</h3><p>Use a different prefix in this server without changing other servers.</p><div class="field"><label>Server prefix</label><input id="prefix" class="input" maxlength="5" placeholder="."></div><button class="btn" onclick="saveGeneral()">Save Prefix</button></div>
+<div class="card"><h3>Log Channel</h3><p>Channel ID where moderation and bot logs should be sent.</p><div class="field"><label>Channel ID</label><input id="logChannel" class="input" placeholder="123456789012345678"></div><button class="btn" onclick="saveGeneral()">Save</button></div>
+</div>
+<section id="commands" class="hero" style="margin-top:35px"><h2>Commands</h2><div class="muted">Your existing Command-Hub commands stay available. These settings control how they behave in this server.</div></section>
+<div class="cards3"><div class="command"><b>⚡ Moderation</b><span class="tag">ban</span><span class="tag">kick</span><span class="tag">mute</span><span class="tag">warn</span><span class="tag">purge</span></div><div class="command"><b>🎁 Giveaways</b><span class="tag">giveaway</span><span class="tag">end</span><span class="tag">reroll</span></div><div class="command"><b>🔧 Utility</b><span class="tag">serverinfo</span><span class="tag">afk</span><span class="tag">poll</span><span class="tag">remindme</span></div></div>
+<section id="messages" class="hero" style="margin-top:35px"><h2>Messages</h2><div class="muted">Configure automatic replies for this server.</div></section>
+<div class="card wide"><div id="responders"></div><div class="grid"><div class="field"><label>Trigger</label><input id="trigger" class="input" placeholder="hi"></div><div class="field"><label>Response</label><input id="response" class="input" placeholder="how are you"></div></div><button class="btn" onclick="addResponder()">Add Auto Responder</button></div>
+<section id="automod" class="hero" style="margin-top:35px"><h2>Auto Moderation</h2><div class="muted">Configure the same AutoMod behavior used by the bot.</div></section>
+<div class="grid"><div class="card"><div class="row"><div><b>Auto Moderation</b><div class="muted">Enable or disable all configured AutoMod checks.</div></div><button id="automodEnabled" class="switch" onclick="toggle('automodEnabled')"></button></div><div class="row"><span>Anti-spam</span><button id="antiSpam" class="switch" onclick="toggle('antiSpam')"></button></div><div class="row"><span>Anti-scam</span><button id="antiScam" class="switch" onclick="toggle('antiScam')"></button></div><div class="row"><span>Mass mentions</span><button id="massMentions" class="switch" onclick="toggle('massMentions')"></button></div><div class="row"><span>Suspicious links</span><button id="suspiciousLinks" class="switch" onclick="toggle('suspiciousLinks')"></button></div></div><div class="card"><h3>Banned Words</h3><p>Add one word per line. Matching is whole-word based, so <b>hi</b> will not trigger inside <b>this</b>.</p><textarea id="bannedWords" class="textarea" placeholder="word1\nword2"></textarea><div class="field"><label>Action</label><select id="automodAction" class="select"><option value="delete">Delete</option><option value="warn">Warn</option><option value="timeout">Timeout</option><option value="delete_timeout">Delete + Timeout</option></select></div><button class="btn" onclick="saveAutomod()">Save AutoMod</button></div></div>
+<section id="moderation" class="hero" style="margin-top:35px"><h2>Moderation</h2><div class="muted">Your moderation commands use the server's existing permissions and configuration.</div></section><div class="card"><div class="cards3"><div class="command"><b>🔨 Ban / Kick</b><span class="muted">Uses Discord moderation permissions.</span></div><div class="command"><b>⏱️ Timeout / Mute</b><span class="muted">Uses the bot's existing timeout and mute commands.</span></div><div class="command"><b>⚠️ Warnings</b><span class="muted">Warnings remain stored per server.</span></div></div></div>
+<section id="giveaway" class="hero" style="margin-top:35px"><h2>Giveaway Daily Messages</h2><div class="muted">Automatic reminders for active giveaways.</div></section><div class="card"><div class="row"><div><b>Daily messages</b><div class="muted">Send reminders until the giveaway ends.</div></div><button id="giveawayEnabled" class="switch" onclick="toggle('giveawayEnabled')"></button></div><div class="field"><label>Channel ID</label><input id="giveawayChannel" class="input"></div><div class="field"><label>Message</label><input id="giveawayMessage" class="input"></div><button class="btn" onclick="saveGiveaway()">Save Giveaway Settings</button></div>
+<section id="ai" class="hero" style="margin-top:35px"><h2>AI Moderation</h2><div class="muted">Configure the existing AI settings for this server.</div></section><div class="card"><div class="row"><span>AI enabled</span><button id="aiEnabled" class="switch" onclick="toggle('aiEnabled')"></button></div><div class="row"><span>Mention-only mode</span><button id="mentionOnly" class="switch" onclick="toggle('mentionOnly')"></button></div><div class="field"><label>AI Channel ID</label><input id="aiChannel" class="input"></div><button class="btn" onclick="saveAi()">Save AI Settings</button></div>
+<section id="logging" class="hero" style="margin-top:35px"><h2>Logging</h2><div class="muted">The bot's existing logging system will use the channel configured above.</div></section>
+<div id="branding" class="card" style="margin-top:20px"><h3>Custom Branding</h3><p>Branding controls can be added here next without changing the bot startup or command system.</p></div>
+<div id="status" class="status"></div></main></section></div>`;
+  const script = `<script>
+let cfg={};let responders=[];
+const id=${JSON.stringify(g.id)};
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',1800)}
+function setSwitch(id,on){const e=document.getElementById(id);if(e)e.classList.toggle('on',!!on)}
+function toggle(id){document.getElementById(id).classList.toggle('on')}
+function on(id){return document.getElementById(id).classList.contains('on')}
+async function load(){const r=await fetch('/dashboard/api/'+id+'/config');if(!r.ok){toast('Could not load settings');return}const d=await r.json();cfg=d.config||{};responders=d.autoResponders||[];document.getElementById('prefix').value=cfg.prefix||'.';document.getElementById('logChannel').value=cfg.logChannel||'';const a=cfg.automod||{};setSwitch('automodEnabled',a.enabled);setSwitch('antiSpam',a.antiSpam);setSwitch('antiScam',a.antiScam);setSwitch('massMentions',a.massMentions);setSwitch('suspiciousLinks',a.suspiciousLinks);document.getElementById('bannedWords').value=(a.bannedWords||[]).join('\n');document.getElementById('automodAction').value=a.action||'delete_timeout';const ai=cfg.ai||{};setSwitch('aiEnabled',ai.enabled);setSwitch('mentionOnly',ai.mentionOnly);document.getElementById('aiChannel').value=ai.channelId||'';const gw=cfg.giveawayDaily||{};setSwitch('giveawayEnabled',gw.enabled);document.getElementById('giveawayChannel').value=gw.channelId||'';document.getElementById('giveawayMessage').value=gw.message||'🎁 Don’t forget to enter our active giveaway!';renderResponders()}
+async function save(body){const r=await fetch('/dashboard/api/'+id+'/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok){toast(d.error||'Save failed');return}cfg=d.config||cfg;responders=d.autoResponders||responders;renderResponders();toast('Saved to Command-Hub')}
+function saveGeneral(){save({prefix:document.getElementById('prefix').value,logChannel:document.getElementById('logChannel').value||null})}
+function saveAutomod(){save({automod:{enabled:on('automodEnabled'),antiSpam:on('antiSpam'),antiScam:on('antiScam'),massMentions:on('massMentions'),suspiciousLinks:on('suspiciousLinks'),bannedWords:document.getElementById('bannedWords').value.split('\n').map(x=>x.trim()).filter(Boolean),action:document.getElementById('automodAction').value}})}
+function saveAi(){save({ai:{enabled:on('aiEnabled'),mentionOnly:on('mentionOnly'),channelId:document.getElementById('aiChannel').value.trim()||undefined}})}
+function saveGiveaway(){save({giveawayDaily:{enabled:on('giveawayEnabled'),channelId:document.getElementById('giveawayChannel').value.trim()||undefined,message:document.getElementById('giveawayMessage').value}})}
+function renderResponders(){const e=document.getElementById('responders');e.innerHTML=responders.length?responders.map((r,i)=>'<div class="row"><span><b>'+escapeHtml(r.trigger)+'</b> → '+escapeHtml(r.response)+'</span><button class="btn danger" onclick="removeResponder('+i+')">Remove</button></div>').join(''):'<p class="muted">No auto responders configured.</p>'}
+function escapeHtml(s){return String(s).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))}
+function addResponder(){const t=document.getElementById('trigger').value.trim(),r=document.getElementById('response').value.trim();if(!t||!r)return toast('Enter trigger and response');responders.push({trigger:t,response:r});document.getElementById('trigger').value='';document.getElementById('response').value='';save({autoResponders:responders})}
+function removeResponder(i){responders.splice(i,1);save({autoResponders:responders})}
+load();
+</script>`;
+  return page(`${g.name} Dashboard`, body, script);
+}
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, base());
+    const url = new URL(req.url || '/', PUBLIC_URL);
     if (url.pathname === '/login') {
-      if (!CLIENT_ID || !CLIENT_SECRET) return res.end(page('Setup', '<main><h1>Discord OAuth setup required</h1><p class="muted">Add DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in Render.</p></main>'));
+      if (!CLIENT_ID || !CLIENT_SECRET) return res.end(page('Setup','<main class="content"><div class="card"><h2>Discord OAuth setup required</h2><p class="muted">Add DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in Render.</p></div></main>'));
       const u = new URL('https://discord.com/oauth2/authorize');
-      u.searchParams.set('client_id', CLIENT_ID);
-      u.searchParams.set('response_type','code');
-      u.searchParams.set('redirect_uri', redirectUri());
-      u.searchParams.set('scope','identify guilds');
-      res.writeHead(302,{Location:u.toString()}); return res.end();
+      u.searchParams.set('client_id', CLIENT_ID);u.searchParams.set('response_type','code');u.searchParams.set('redirect_uri', REDIRECT_URI);u.searchParams.set('scope','identify guilds');
+      res.writeHead(302,{Location:u.toString()});return res.end();
     }
     if (url.pathname === '/oauth/callback') {
-      const code = url.searchParams.get('code');
-      if (!code) { res.writeHead(400); return res.end('Missing OAuth code'); }
-      const body = new URLSearchParams({client_id:CLIENT_ID,client_secret:CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:redirectUri()});
-      const tokenRes = await fetch('https://discord.com/api/v10/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-      if (!tokenRes.ok) { res.writeHead(502); return res.end(`Discord OAuth failed: ${await tokenRes.text()}`); }
-      const token = await tokenRes.json();
-      const [user,guilds] = await Promise.all([api('/users/@me',token.access_token),api('/users/@me/guilds',token.access_token)]);
-      const manageable = guilds.filter(g => g.owner || ((BigInt(g.permissions || 0) & 0x20n) !== 0n));
-      const id = newSession({ user, guilds: manageable });
-      res.writeHead(302,{Location:'/servers','Set-Cookie':sessionCookie(id)}); return res.end();
+      const code=url.searchParams.get('code');if(!code){res.writeHead(400);return res.end('Missing OAuth code')}
+      const body=new URLSearchParams({client_id:CLIENT_ID,client_secret:CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:REDIRECT_URI});
+      const tokenRes=await fetch('https://discord.com/api/v10/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+      if(!tokenRes.ok){res.writeHead(502);return res.end(`Discord OAuth failed: ${await tokenRes.text()}`)}
+      const token=await tokenRes.json();const [user,guilds]=await Promise.all([discordApi('/users/@me',token.access_token),discordApi('/users/@me/guilds',token.access_token)]);
+      const manageable=guilds.filter(g=>g.owner||((BigInt(g.permissions||0)&0x20n)!==0n));const sid=newSession({user,guilds:manageable});res.writeHead(302,{Location:'/servers','Set-Cookie':sessionCookie(sid)});return res.end();
     }
-    if (url.pathname === '/logout') { res.writeHead(302,{Location:'/', 'Set-Cookie':'sparxie_session=; Path=/; Max-Age=0'}); return res.end(); }
-    if (url.pathname === '/servers') {
-      const s=getSession(req); if(!s){res.writeHead(302,{Location:'/'});return res.end();}
-      const cards=s.guilds.map(g=>`<div class="card"><div class="icon">${g.icon?'🛡️':'⚡'}</div><h2>${esc(g.name)}</h2><p class="muted">${g.id}</p><a class="btn" href="/dashboard/${g.id}">Open Dashboard</a></div>`).join('');
-      res.setHeader('Content-Type','text/html'); return res.end(page('Select Server',`<main><h1>Select a server</h1><p class="muted">Choose a server you manage.</p><div class="grid">${cards || '<p class="muted">No manageable servers found.</p>'}</div></main>`));
+    if(url.pathname==='/logout'){res.writeHead(302,{Location:'/','Set-Cookie':'sparxie_session=; Path=/; Max-Age=0'});return res.end()}
+    if(url.pathname==='/servers'){
+      const s=getSession(req);if(!s){res.writeHead(302,{Location:'/'});return res.end()}
+      const cards=s.guilds.map(g=>`<div class="card"><div class="bolt">⚡</div><h2>${esc(g.name)}</h2><p class="muted">${esc(g.id)}</p><a class="btn" href="/dashboard/${g.id}">Open Dashboard</a></div>`).join('');
+      return res.end(page('Select Server',`<main class="content"><div class="hero"><h2>Select a server</h2><div class="muted">Choose a server you manage.</div></div><div class="grid">${cards||'<div class="card"><p class="muted">No manageable servers found.</p></div>'}</div></main>`));
     }
-    if (url.pathname.startsWith('/dashboard/')) {
-      const s=getSession(req); if(!s){res.writeHead(302,{Location:'/'});return res.end();}
-      const id=url.pathname.split('/')[2]; const g=s.guilds.find(x=>x.id===id); if(!g){res.writeHead(302,{Location:'/servers'});return res.end();}
-      res.setHeader('Content-Type','text/html'); return res.end(page(`${g.name} Dashboard`,`<main><h1>⚡ ${esc(g.name)}</h1><p class="muted">Server-specific dashboard is ready. Prefix, AutoMod, moderation, giveaways and logging can be added here.</p><a class="btn" href="/servers">Change Server</a></main>`));
+    const dm=url.pathname.match(/^\/dashboard\/(\d+)$/);
+    if(dm){const s=getSession(req);if(!s){res.writeHead(302,{Location:'/'});return res.end()}const g=s.guilds.find(x=>x.id===dm[1]);if(!g){res.writeHead(302,{Location:'/servers'});return res.end()}return res.end(dashboardPage(g));}
+    const proxy=url.pathname.match(/^\/dashboard\/api\/(\d+)\/config$/);
+    if(proxy){
+      const s=getSession(req);if(!s){res.writeHead(401);return res.end('Not logged in')}const g=s.guilds.find(x=>x.id===proxy[1]);if(!g){res.writeHead(403);return res.end('No access to this server')}
+      const headers={'x-dashboard-secret':DASHBOARD_API_SECRET,'x-dashboard-user':s.user.id};if(req.headers['content-type'])headers['content-type']=req.headers['content-type'];let body;
+      if(req.method==='PUT'){body=await new Promise((resolve,reject)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>resolve(b));req.on('error',reject)})}
+      const r=await fetch(`${COMMAND_HUB_API_URL}/dashboard/api/guild/${g.id}/config`,{method:req.method,headers,body});const text=await r.text();res.writeHead(r.status,{'content-type':r.headers.get('content-type')||'application/json'});return res.end(text);
     }
-    const html=await readFile(new URL('./index.html',import.meta.url),'utf8'); res.setHeader('Content-Type','text/html'); res.end(html);
-  } catch(e) { console.error(e); res.writeHead(500); res.end('Internal server error'); }
+    const html=await readFile(new URL('./index.html',import.meta.url),'utf8');res.setHeader('Content-Type','text/html');res.end(html);
+  }catch(e){console.error(e);res.writeHead(500);res.end('Internal server error')}
 });
 server.listen(PORT,'0.0.0.0',()=>console.log(`Dashboard listening on 0.0.0.0:${PORT}`));
