@@ -1,0 +1,32 @@
+name: Fix dashboard done flow
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, '[dashboard-done-fix]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Adjust Done behavior
+        run: |
+          python3 <<'PY2'
+          from pathlib import Path
+          p=Path("server.js")
+          s=p.read_text()
+          s=s.replace("function markDashboardDirty(){ dashboardDirty = true; renderDashboardSaveBar(); }", "function markDashboardDirty(){ dashboardDirty = true; }")
+          s=s.replace("  markDashboardDirty();\n  toast('Changes are waiting to be saved');", "  markDashboardDirty();\n  renderDashboardSaveBar();\n  toast('Changes are waiting to be saved');")
+          p.write_text(s)
+          PY2
+          node --check server.js
+          rm -f .github/workflows/fix-dashboard-done-flow.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server.js .github/workflows/fix-dashboard-done-flow.yml
+          git commit -m "Show save bar after Done [dashboard-done-fix]"
+          git push
