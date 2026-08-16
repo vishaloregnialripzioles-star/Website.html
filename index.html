@@ -12,4 +12,7 @@
 <body>
   <nav class="nav"><a class="logo" href="/"><span class="mark">⚡</span>Sparxie Dashboard</a><a class="btn" style="padding:9px 14px;font-size:13px" href="/login">Login with Discord</a></nav>
   <main class="wrap"><section class="hero"><div class="eyebrow">Discord server management</div><h1>Control your server.<br>Simply.</h1><p>Connect Discord, select a server you manage, and open its Sparxie dashboard. The controls and features can be added here as you decide what you want.</p><a class="btn" href="/login">🔵 Continue with Discord</a><div class="sub">Secure Discord OAuth • No bot token is entered on this page</div></section><section class="preview"><div class="preview-inner"><div class="fake-server"><div class="fake-icon">⚡</div><div><b>Select a server</b><span>Choose a Discord server you manage</span></div></div><div class="hint"><strong>Next step</strong><br>After login, your manageable servers appear here. Select one to open its dashboard.</div></div></section></main>
+  <script>
+    if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(e=>console.error('Dashboard worker',e));}
+  </script>
 </body></html>
