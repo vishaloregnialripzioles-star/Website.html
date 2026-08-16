@@ -6,16 +6,14 @@ const PORT = Number(process.env.PORT || 3000);
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || '';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const PUBLIC_URL = 'https://website-html-jt0l.onrender.com';
+const REDIRECT_URI = `${PUBLIC_URL}/oauth/callback`;
 const sessions = new Map();
 
-function base(req) {
-  return process.env.DISCORD_REDIRECT_URI
-    ? process.env.DISCORD_REDIRECT_URI.replace(/\/oauth\/callback$/, '')
-    : (process.env.PUBLIC_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`);
-}
-function redirectUri(req) { return process.env.DISCORD_REDIRECT_URI || `${base(req)}/oauth/callback`; }
+function base() { return PUBLIC_URL; }
+function redirectUri() { return REDIRECT_URI; }
 function sign(v) { return crypto.createHmac('sha256', SESSION_SECRET).update(v).digest('base64url'); }
-function sessionCookie(id) { return `sparxie_session=${encodeURIComponent(`${Buffer.from(id).toString('base64url')}.${sign(id)}`)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`; }
+function sessionCookie(id) { return `sparxie_session=${encodeURIComponent(`${Buffer.from(id).toString('base64url')}.${sign(id)}`)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=604800`; }
 function getSession(req) {
   const raw = (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('sparxie_session='));
   if (!raw) return null;
@@ -39,16 +37,20 @@ function page(title, body) { return `<!doctype html><html><head><meta charset="u
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, base(req));
+    const url = new URL(req.url, base());
     if (url.pathname === '/login') {
       if (!CLIENT_ID || !CLIENT_SECRET) return res.end(page('Setup', '<main><h1>Discord OAuth setup required</h1><p class="muted">Add DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in Render.</p></main>'));
       const u = new URL('https://discord.com/oauth2/authorize');
-      u.searchParams.set('client_id', CLIENT_ID); u.searchParams.set('response_type','code'); u.searchParams.set('redirect_uri', redirectUri(req)); u.searchParams.set('scope','identify guilds');
+      u.searchParams.set('client_id', CLIENT_ID);
+      u.searchParams.set('response_type','code');
+      u.searchParams.set('redirect_uri', redirectUri());
+      u.searchParams.set('scope','identify guilds');
       res.writeHead(302,{Location:u.toString()}); return res.end();
     }
     if (url.pathname === '/oauth/callback') {
-      const code = url.searchParams.get('code'); if (!code) { res.writeHead(400); return res.end('Missing OAuth code'); }
-      const body = new URLSearchParams({client_id:CLIENT_ID,client_secret:CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:redirectUri(req)});
+      const code = url.searchParams.get('code');
+      if (!code) { res.writeHead(400); return res.end('Missing OAuth code'); }
+      const body = new URLSearchParams({client_id:CLIENT_ID,client_secret:CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:redirectUri()});
       const tokenRes = await fetch('https://discord.com/api/v10/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
       if (!tokenRes.ok) { res.writeHead(502); return res.end(`Discord OAuth failed: ${await tokenRes.text()}`); }
       const token = await tokenRes.json();
