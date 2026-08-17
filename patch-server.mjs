@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 const path='server.js';
 const marker='ADVANCED_DASHBOARD_CONTROLS_V2';
-const script=fs.readFileSync('advanced-dashboard.js','utf8').trim();
+const rawScript=fs.readFileSync('advanced-dashboard.js','utf8').trim();
+const cleanScript=rawScript.replace("const cats=[['general','⚙️ General Settings'],['commands','▣ Commands'],['messages','💬 Messages'],['rewards','🏆 Level & Invite Roles'],['automod','🛡️ Advanced AutoMod'],['moderation','🛡️ Moderation'],['giveaway','🎁 Giveaways'],['templates','📝 Message Templates'],['logging','📋 Logging']];","const cats=[['general','General Settings'],['commands','Commands'],['messages','Messages'],['rewards','Level & Invite Roles'],['automod','Advanced AutoMod'],['moderation','Moderation'],['giveaway','Giveaways'],['templates','Message Templates'],['logging','Logging']];");
+const script=cleanScript;
 let src=fs.readFileSync(path,'utf8');
 if(!src.includes(marker)){
   const encoded=Buffer.from(script,'utf8').toString('base64');
