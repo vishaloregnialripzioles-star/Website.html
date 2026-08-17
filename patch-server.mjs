@@ -7,11 +7,19 @@ let changed = false;
 const botApiUrl = 'https://server-1-05si.onrender.com';
 const inviteUrl = 'https://discord.com/oauth2/authorize?client_id=1530577031753105409&permissions=8&integration_type=0&scope=bot';
 
-// Fix every escaped template-literal delimiter before server.js is parsed.
-// The previous patch only fixed the first occurrence because its regex was not global.
-const unescaped = source.replace(/\\+`/g, '`');
-if (unescaped !== source) {
-  source = unescaped;
+// Normalize escaped template-literal delimiters in the generated server.js.
+// The dashboard source contains literal backslashes before some backticks.
+// They must be removed BEFORE Node parses server.js.
+const normalized = source.replaceAll('\\`', '`');
+if (normalized !== source) {
+  source = normalized;
+  changed = true;
+}
+
+// Also normalize escaped HTML angle brackets introduced by the generated patch.
+const htmlNormalized = source.replaceAll('\\<', '<').replaceAll('\\>', '>');
+if (htmlNormalized !== source) {
+  source = htmlNormalized;
   changed = true;
 }
 
@@ -46,7 +54,7 @@ if (aiSection.test(source)) {
 source = source.replace(/const ai=cfg\.ai\|\|\{\};setSwitch\('aiEnabled',[\s\S]*?document\.getElementById\('aiChannel'\)\.value=ai\.channelId\|\|'';/, '');
 source = source.replace(/function saveAi\(\)\{[\s\S]*?\n\}/, '');
 
-// Replace the old immediate-save functions with a single draft/save workflow.
+// Replace old immediate-save functions with a single draft/save workflow.
 const draftSave = `function save(body){
   mergeDashboard(dashboardDraft, body);
   if(body && body.autoResponders) responders = body.autoResponders;
@@ -72,7 +80,7 @@ source = source.replace(
 source = source.replace('sent to the live Command-Hub bot', 'sent to the live Server-1 bot');
 source = source.replaceAll('Saved to Command-Hub', 'Saved to Server-1');
 
-// Replace the final dashboard commit function so the real HTTP error is shown.
+// Replace the final dashboard commit function so real HTTP errors are shown.
 const saveChangesRegex = /async function saveDashboardChanges\(\)\{[\s\S]*?\n\}\nfunction resetDashboardChanges/;
 const saveChanges = `async function saveDashboardChanges(){
   const button=document.getElementById('dashboard-save');
@@ -104,10 +112,6 @@ if (saveChangesRegex.test(source)) {
   source = source.replace(saveChangesRegex, saveChanges);
   changed = true;
 }
-
-// Make sure the generated dashboard does not retain AI snapshot/save code.
-source = source.replace(/const ai=\{enabled:on\('aiEnabled'[\s\S]*?return \{prefix:/, 'return {prefix:');
-source = source.replace(/const ai=s\.ai\|\|\{\};setSwitch\('aiEnabled'[\s\S]*?document\.getElementById\('aiChannel'\)\.value=ai\.channelId\|\|'';\n/, '');
 
 if (changed) await writeFile(path, source, 'utf8');
 console.log(changed ? '[patch-server] Dashboard fixes applied' : '[patch-server] Dashboard fixes already present');
