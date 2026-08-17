@@ -7,8 +7,8 @@ let changed = false;
 const botApiUrl = 'https://server-1-05si.onrender.com';
 const inviteUrl = 'https://discord.com/oauth2/authorize?client_id=1530577031753105409&permissions=8&integration_type=0&scope=bot';
 
-// Fix the escaped template literals left by previous generated patches.
-// This must happen before server.js is parsed by Node.
+// Fix every escaped template-literal delimiter before server.js is parsed.
+// The previous patch only fixed the first occurrence because its regex was not global.
 const unescaped = source.replace(/\\+`/g, '`');
 if (unescaped !== source) {
   source = unescaped;
