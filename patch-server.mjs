@@ -20,15 +20,34 @@ if (source.includes(oldCards)) {
   changed = true;
 }
 
+// Replace the duplicate/shadowing save functions with one draft-only save.
+const draftSave = `function save(body){
+  mergeDashboard(dashboardDraft, body);
+  if(body && body.autoResponders) responders = body.autoResponders;
+  cfg = {...cfg, ...dashboardDraft};
+  renderResponders();
+  markDashboardDirty();
+  toast('Successfully changed — click Save changes to apply');
+}`;
+const firstSave = /(?:async )?function save\(body\)\{[\s\S]*?\}\nfunction saveGeneral\(\)/;
+if (firstSave.test(source)) {
+  source = source.replace(firstSave, `${draftSave}\nfunction saveGeneral()`);
+  changed = true;
+}
+const duplicateSave = /function save\(body\)\{\n  mergeDashboard\(dashboardDraft, body\);[\s\S]*?toast\('Changes are waiting to be saved'\);\n\}/;
+if (duplicateSave.test(source)) {
+  source = source.replace(duplicateSave, draftSave);
+  changed = true;
+}
+
 if (source.includes('function markDashboardDirty(){ dashboardDirty = true; }')) {
   source = source.replace('function markDashboardDirty(){ dashboardDirty = true; }', 'function markDashboardDirty(){ dashboardDirty = true; renderDashboardSaveBar(); }');
   changed = true;
 }
 
-if (source.includes("toast('Changes are waiting to be saved')")) {
-  source = source.replace("toast('Changes are waiting to be saved')", "toast('Successfully changed — click Save changes to apply')");
-  changed = true;
-}
+source = source.replace("function toggle(id){document.getElementById(id).classList.toggle('on')}", "function toggle(id){document.getElementById(id).classList.toggle('on');markDashboardDirty()}");
+source = source.replace('sent to the live Command-Hub bot', 'sent to the live Server-1 bot');
+source = source.replaceAll('Saved to Command-Hub', 'Saved to Server-1');
 
 if (changed) await writeFile(path, source, 'utf8');
 console.log(changed ? '[patch-server] Dashboard fixes applied' : '[patch-server] Dashboard fixes already present');
