@@ -103,5 +103,13 @@ source = source.replace(/const ai=\{enabled:on\('aiEnabled'[\s\S]*?return \{pref
 source = source.replace(/const ai=s\.ai\|\|\{\};setSwitch\('aiEnabled'[\s\S]*?document\.getElementById\('aiChannel'\)\.value=ai\.channelId\|\|'';\n/, '');
 source = source.replace("dashboardSaved=cloneDashboard(dashboardSnapshotFromDom());", "dashboardSaved=cloneDashboard(dashboardSnapshotFromDom());");
 
+// Earlier automated patches accidentally left escaped template-literal delimiters
+// in server.js. Normalize those before Node parses the generated server.
+const normalized = source.replaceAll('\\`', '`');
+if (normalized !== source) {
+  source = normalized;
+  changed = true;
+}
+
 if (changed) await writeFile(path, source, 'utf8');
 console.log(changed ? '[patch-server] Dashboard fixes applied' : '[patch-server] Dashboard fixes already present');
