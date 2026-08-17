@@ -14,7 +14,7 @@ const replacement = `if(url.pathname==='/servers'){
       const cards=(await Promise.all(s.guilds.map(async g=>{
         let present=false;
         try{
-          const r=await fetch(\`${COMMAND_HUB_API_URL}/dashboard/bot-status/\${g.id}\`,{headers:{Origin:PUBLIC_URL},cache:'no-store'});
+          const r=await fetch(COMMAND_HUB_API_URL+'/dashboard/bot-status/'+g.id,{headers:{Origin:PUBLIC_URL},cache:'no-store'});
           if(r.ok){const d=await r.json();present=!!d.present;}
         }catch{}
         const action=present
