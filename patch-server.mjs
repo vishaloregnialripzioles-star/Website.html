@@ -20,7 +20,6 @@ if (source.includes(oldCards)) {
   changed = true;
 }
 
-// Replace the duplicate/shadowing save functions with one draft-only save.
 const draftSave = `function save(body){
   mergeDashboard(dashboardDraft, body);
   if(body && body.autoResponders) responders = body.autoResponders;
@@ -48,6 +47,18 @@ if (source.includes('function markDashboardDirty(){ dashboardDirty = true; }')) 
 source = source.replace("function toggle(id){document.getElementById(id).classList.toggle('on')}", "function toggle(id){document.getElementById(id).classList.toggle('on');markDashboardDirty()}");
 source = source.replace('sent to the live Command-Hub bot', 'sent to the live Server-1 bot');
 source = source.replaceAll('Saved to Command-Hub', 'Saved to Server-1');
+
+// Remove the obsolete AI Moderation module from the rendered dashboard.
+const aiNav = /<a href="#ai">[^<]*AI Moderation<\/a>/g;
+if (aiNav.test(source)) {
+  source = source.replace(aiNav, '');
+  changed = true;
+}
+const aiSection = /\n<section id="ai"[\s\S]*?<section id="logging"/;
+if (aiSection.test(source)) {
+  source = source.replace(aiSection, '\n<section id="logging"');
+  changed = true;
+}
 
 if (changed) await writeFile(path, source, 'utf8');
 console.log(changed ? '[patch-server] Dashboard fixes applied' : '[patch-server] Dashboard fixes already present');
