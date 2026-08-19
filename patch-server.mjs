@@ -2,6 +2,7 @@ import fs from 'node:fs';
 const path='server.js';
 const rawScript=fs.readFileSync('advanced-dashboard.js','utf8').trim();
 const modulesScript=fs.readFileSync('modules-dashboard.js','utf8').trim();
+const hinglishScript=fs.readFileSync('hinglish-dashboard.js','utf8').trim();
 let src=fs.readFileSync(path,'utf8');
 const footer='</body></html>';
 const advancedMarker='ADVANCED_DASHBOARD_CONTROLS_V4';
@@ -19,6 +20,14 @@ if(!src.includes(modulesMarker)){
   if(!src.includes(footer)) throw new Error('Could not locate HTML footer for module dashboard');
   src=src.replace(footer,`${injection}${footer}`);
   console.log('[patch-server] Server module dashboard applied');
+}
+const hinglishMarker='SPARXIE_HINGLISH_AUTOMOD_V1';
+if(!src.includes(hinglishMarker)){
+  const encoded=Buffer.from(hinglishScript,'utf8').toString('base64');
+  const injection=`<script>/* ${hinglishMarker} */ (new Function(atob('${encoded}')))();</script>`;
+  if(!src.includes(footer)) throw new Error('Could not locate HTML footer for Hinglish AutoMod');
+  src=src.replace(footer,`${injection}${footer}`);
+  console.log('[patch-server] Hinglish cursed words dashboard applied');
 }
 const hamburgerCss='<style id="hamburger-menu-fix-v4">.v4-menu{display:none!important}@media(max-width:800px){.v4-menu{display:block!important}}</style>';
 if(!src.includes('id="hamburger-menu-fix-v4"')){
